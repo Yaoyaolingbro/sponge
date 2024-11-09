@@ -70,6 +70,11 @@ void NetworkInterface::send_datagram(const InternetDatagram &dgram, const Addres
 //! \param[in] frame the incoming Ethernet frame
 optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &frame) {
     auto &header = frame.header();
+
+    if (header.dst != _ethernet_address && header.dst != ETHERNET_BROADCAST) {
+        return nullopt;
+    }
+
     if (header.type == EthernetHeader::TYPE_IPv4) {
         InternetDatagram dgram;
         if (dgram.parse(frame.payload()) == ParseResult::NoError) {
@@ -120,11 +125,13 @@ optional<InternetDatagram> NetworkInterface::recv_frame(const EthernetFrame &fra
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void NetworkInterface::tick(const size_t ms_since_last_tick) {
+    constexpr size_t ARP_TIMEOUT = 30 * 1000;
+    constexpr size_t ARP_REQUEST_INTERVAL = 5 * 1000;
     _time += ms_since_last_tick;
 
     // check ARP cache
     for (auto it = _arp_cache.begin(); it != _arp_cache.end();) {
-        if (_time - it->second.second > 30 * 1000) {
+        if (_time - it->second.second >= ARP_TIMEOUT) {
             it = _arp_cache.erase(it);
         } else {
             ++it;
@@ -133,10 +140,12 @@ void NetworkInterface::tick(const size_t ms_since_last_tick) {
 
     // check ARP waitlist
     for (auto it = _waiting_arps.begin(); it != _waiting_arps.end();) {
-        if (_time - it->second > 5 * 1000) {
+        if (_time - it->second >= ARP_REQUEST_INTERVAL) {
+            // Broadcast ARP request
             auto frame = broadcast_frame(it->first);
             _frames_out.push(frame);
             it->second = _time;
         }
+        ++it;
     }
 }
