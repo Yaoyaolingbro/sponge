@@ -1,3 +1,3 @@
 sh cmake.sh
 cd build
-make check_lab1
+make check_lab5
