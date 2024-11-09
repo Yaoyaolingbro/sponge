@@ -48,30 +48,30 @@ void Router::route_one_datagram(InternetDatagram &dgram) {
                 match_route = it;
             }
         }
-
-        if (match_route == _route_table.end()) {
-            cerr << "DEBUG: no matching route \n";
-            return;
-        }
-
-        if (header.ttl == 0) {
-            cerr << "DEBUG: TTL expired \n";
-            return;
-        }
-
-        -- header.ttl;
-
-        const auto & next_hop = match_route->next_hop;
-        auto &interface = _interfaces[match_route->interface_idx];  // interface to send the datagram out on
-
-        if (next_hop.has_value()) {
-            interface.send_datagram(dgram, next_hop.value());
-        } else {
-            interface.send_datagram(dgram, Address::from_ipv4_numeric(dest));
-        }
-
-        cerr << "DEBUG: forwarding to " << (next_hop.has_value() ? next_hop->ip() : Address::from_ipv4_numeric(dest).ip()) << " on interface " << match_route->interface_idx << "\n";
     }
+
+    if (match_route == _route_table.end()) {
+        cerr << "DEBUG: no matching route \n";
+        return;
+    }
+
+    if (header.ttl <= 1) {
+        cerr << "DEBUG: TTL expired \n";
+        return;
+    }
+
+    --header.ttl;
+
+    const auto & next_hop = match_route->next_hop;
+    auto &interface = _interfaces[match_route->interface_idx];  // interface to send the datagram out on
+
+    if (next_hop.has_value()) {
+        interface.send_datagram(dgram, next_hop.value());
+    } else {
+        interface.send_datagram(dgram, Address::from_ipv4_numeric(dest));
+    }
+
+    cerr << "DEBUG: forwarding to " << (next_hop.has_value() ? next_hop->ip() : Address::from_ipv4_numeric(dest).ip()) << " on interface " << match_route->interface_idx << "\n";
 }
 
 void Router::route() {
