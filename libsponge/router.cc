@@ -29,14 +29,49 @@ void Router::add_route(const uint32_t route_prefix,
     cerr << "DEBUG: adding route " << Address::from_ipv4_numeric(route_prefix).ip() << "/" << int(prefix_length)
          << " => " << (next_hop.has_value() ? next_hop->ip() : "(direct)") << " on interface " << interface_num << "\n";
 
-    DUMMY_CODE(route_prefix, prefix_length, next_hop, interface_num);
-    // Your code here.
+    _route_table.push_back({route_prefix, prefix_length, next_hop, interface_num});
 }
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
-    DUMMY_CODE(dgram);
-    // Your code here.
+    auto &header = dgram.header();
+    auto dest = header.dst;
+    auto match_route = _route_table.end();
+
+    for (auto it = _route_table.begin(); it != _route_table.end(); ++it) {
+        auto &entry = *it;
+        auto route_prefix = entry.route_prefix;
+        auto prefix_length = entry.prefix_length;
+
+        if (prefix_length == 0 || (route_prefix ^ dest) >> (32 - prefix_length) == 0) {
+            if (match_route == _route_table.end() || prefix_length > match_route->prefix_length) {
+                match_route = it;
+            }
+        }
+
+        if (match_route == _route_table.end()) {
+            cerr << "DEBUG: no matching route \n";
+            return;
+        }
+
+        if (header.ttl == 0) {
+            cerr << "DEBUG: TTL expired \n";
+            return;
+        }
+
+        -- header.ttl;
+
+        const auto & next_hop = match_route->next_hop;
+        auto &interface = _interfaces[match_route->interface_idx];  // interface to send the datagram out on
+
+        if (next_hop.has_value()) {
+            interface.send_datagram(dgram, next_hop.value());
+        } else {
+            interface.send_datagram(dgram, Address::from_ipv4_numeric(dest));
+        }
+
+        cerr << "DEBUG: forwarding to " << (next_hop.has_value() ? next_hop->ip() : Address::from_ipv4_numeric(dest).ip()) << " on interface " << match_route->interface_idx << "\n";
+    }
 }
 
 void Router::route() {
